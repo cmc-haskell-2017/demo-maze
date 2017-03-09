@@ -1,156 +1,163 @@
-{-# LANGUAGE TupleSections #-}
-{-# LANGUAGE DeriveFunctor #-}
-{-# LANGUAGE DeriveFoldable #-}
 module Maze where
 
-import Data.Monoid ((<>))
+import Data.Monoid
 import Graphics.Gloss.Interface.Pure.Game
 import System.Random
 
+import Maze.Space
+
+-- | Запустить демонстрацию с лабиринтом.
 demo :: IO ()
 demo = play display bgColor fps initGame drawGame handleGame updateGame
   where
-    display = InWindow "Лабиринты" (500, 500) (200, 200)
-    bgColor = black   -- цвет фона
-    fps     = 60      -- кол-во кадров в секунду
+    display = InWindow "Лабиринты" (1000, 1000) (200, 200)
+    bgColor = voidColor -- цвет фона
+    fps     = 60        -- кол-во кадров в секунду
 
-type Game = Maze
-
-initGame :: Game
-initGame = genMaze gameArea (mkStdGen 1)
-
-gameArea :: Area
-gameArea = Area (-23, -23) (23, 23)
-
-drawGame :: Game -> Picture
-drawGame = scale 10 10 . foldMap drawBrick . mappend (borderMaze gameArea)
-
-borderMaze :: Area -> Maze
-borderMaze area = Space
-  { spaceObjects = concat
-      [ map (l-1,) [b-1..t+1]
-      , map (r+1,) [b-1..t+1]
-      , map (,b-1) [l-1..r+1]
-      , map (,t+1) [l-1..r+1]
-      ]
-  , spaceArea = Just area
+-- | Состояние игры.
+data Game = Game
+  { gameMaze   :: Maze    -- ^ Весь лабиринт.
+  , gamePlayer :: Coords  -- ^ Положение игрока.
   }
+
+-- | Начальное состояние игры.
+initGame :: Game
+initGame = Game
+  { gameMaze   = withBorder (genMaze gameArea (mkStdGen 1))
+  , gamePlayer = (-15, -15)
+  }
+
+-- | Область лабиринта.
+gameArea :: Area
+gameArea = Area (-15, -15) (15, 15)
+
+-- | Отрисовка игры.
+drawGame :: Game -> Picture
+drawGame game = scale 20 20 (pictures
+  [ foldMap drawBrick (crop (playerArea (gamePlayer game)) (gameMaze game))
+  , fadeAt (gamePlayer game)
+  , drawPlayer (gamePlayer game)
+  ])
+
+-- | Минимальная прямоугольная область, вмещающая поле зрения игрока.
+playerArea :: Coords -> Area
+playerArea (i, j) = Area (i - fadeRadius, j - fadeRadius) (i + fadeRadius, j + fadeRadius)
+
+-- | Радиус видимости, определяющий поле зрения игрока.
+fadeRadius :: Num a => a
+fadeRadius = 8
+
+-- | Отобразить плавное затемнение вокруг игрока.
+fadeAt :: Coords -> Picture
+fadeAt (i, j) = translate (fromIntegral i) (fromIntegral j) (scale fadeRadius fadeRadius fade)
+
+-- | Плавное затемнение с радиусом 1.
+fade :: Picture
+fade = foldMap fadeRing [0..n] <> outerVoid
   where
-    Area (l, b) (r, t) = area
+    n = 100
+    fadeRing r = color (withAlpha ((r / n)^5) voidColor)
+      (thickCircle (r / n) (10 / n))
+    outerVoid = color voidColor (thickCircle 1.5 1)
 
-handleGame :: Event -> Game -> Game
-handleGame _ = id
+-- | Цвет пустоты (невидимой для игрока зоны).
+voidColor :: Color
+voidColor = black
 
-updateGame :: Float -> Game -> Game
-updateGame _ = id
+-- | Отобразить игрока.
+drawPlayer :: Coords -> Picture
+drawPlayer (i, j) = translate (fromIntegral i) (fromIntegral j) (color magenta (thickCircle 0.2 0.4))
 
+-- | Отобразить ячейку стены лабиринта.
 drawBrick :: Brick -> Picture
 drawBrick (i, j) = translate (fromIntegral i) (fromIntegral j)
   (color orange (scale 0.45 0.45 (polygon [ (-1, -1), (1, -1), (1, 1), (-1, 1) ])))
 
-
-type Coords = (Int, Int)
-
-data Area = Area Coords Coords
-  deriving (Show)
-
-maxArea :: Area -> Area -> Area
-maxArea (Area (l1, b1) (r1, t1)) (Area (l2, b2) (r2, t2))
-  = Area (min l1 l2, min b1 b2) (max r1 r2, max t1 t2)
-
--- | Проверить, что точка находится в заданной области.
-inArea :: Area -> Coords -> Bool
-inArea (Area (l, b) (r, t)) (i, j) = and
-  [ l <= i && i <= r
-  , b <= j && j <= t
-  ]
-
-data Space a = Space
-  { spaceObjects :: [a]
-  , spaceArea    :: Maybe Area
-  } deriving (Show, Functor, Foldable)
-
-instance Monoid (Space a) where
-  mempty = Space [] Nothing
-  Space xs ax `mappend` Space ys ay = Space (xs ++ ys) (maxArea' ax ay)
-    where
-      maxArea' Nothing a2 = a2
-      maxArea' a1 Nothing = a1
-      maxArea' (Just a1) (Just a2) = Just (maxArea a1 a2)
-
--- | Оставить в пространстве только указанную область.
-crop :: Area -> Maze -> Maze
-crop area space = Space
-  { spaceObjects = filter (inArea area) (spaceObjects space)
-  , spaceArea    = Just area
-  }
-
-type Brick = Coords
-
-type Maze = Space Brick
-
-mkWall :: Area -> Maze
-mkWall area = Space
-  { spaceObjects = [ (i, j) | i <- [l..r], j <- [b..t] ]
-  , spaceArea = Just area
-  }
+-- | Внешняя граница лабиринта.
+borderMaze :: Area -> Maze
+borderMaze area = fromCoordsList ( concat
+  [ map (\y -> (l - 1, y)) [b-1..t+1]
+  , map (\y -> (r + 1, y)) [b-1..t+1]
+  , map (\x -> (x, b - 1)) [l-1..r+1]
+  , map (\x -> (x, t + 1)) [l-1..r+1]
+  ] )
   where
     Area (l, b) (r, t) = area
 
-swap :: (a, b) -> (b, a)
-swap (x, y) = (y, x)
+-- | Добавить лабиринту внешнюю границу.
+withBorder :: Maze -> Maze
+withBorder maze = maze <> foldMap borderMaze (spaceArea maze)
 
-transposeArea :: Area -> Area
-transposeArea (Area lb rt) = Area (swap lb) (swap rt)
+-- | Обработка событий игры.
+handleGame :: Event -> Game -> Game
+handleGame (EventKey (SpecialKey KeyLeft)  Down _ _) = movePlayer (-1,  0)
+handleGame (EventKey (SpecialKey KeyRight) Down _ _) = movePlayer ( 1,  0)
+handleGame (EventKey (SpecialKey KeyUp)    Down _ _) = movePlayer ( 0,  1)
+handleGame (EventKey (SpecialKey KeyDown)  Down _ _) = movePlayer ( 0, -1)
+handleGame _ = id
 
+-- | Переместить игрока на заданный вектор.
+movePlayer :: (Int, Int) -> Game -> Game
+movePlayer (dx, dy) game
+  | canMove from to (gameMaze game) = game { gamePlayer = to }
+  | otherwise = game
+  where
+    from@(i, j) = gamePlayer game
+    to   = (i + dx, j + dy)
+
+-- | Может ли игрок переместиться из одной точки в другую в лабиринте?
+canMove :: Coords -> Coords -> Maze -> Bool
+canMove from to maze = True
+
+-- | Обновление игры.
+-- Поскольку все обновления происходят по событиям, эта функция ничего не делает.
+updateGame :: Float -> Game -> Game
+updateGame _ = id
+
+-- | Ячейка стены лабиринта.
+type Brick = Coords
+
+-- | Лабиринт — это пространство с ячейками стен.
+type Maze = Space Brick
+
+-- | Стена — это тоже пространство с ячейками стен.
+type Wall = Space Brick
+
+-- | Транспонировать лабиринт.
 transposeMaze :: Maze -> Maze
-transposeMaze (Space objects area) = Space
-  (fmap swap objects)
-  (fmap transposeArea area)
+transposeMaze = fmap swap . transposeSpace
 
-splitH :: Int -> Area -> Split Int
-splitH x (Area (l, b) (r, t)) = Split left x right
+-- | Сгенерировать случайные координаты для вертикальной стены.
+-- Координата x указывает положение стены, а координата y — положение прохода в стене.
+-- Чтобы стены не склеивались и лабиринт оставался связным,
+-- стены всегда создаются на чётных позициях, а проходы — на нечётных.
+randomWallCoords :: RandomGen g => Area -> g -> (Coords, g)
+randomWallCoords (Area (l, b) (r, t)) g = ((2*i, 2*j+1), g'')
   where
-    left  = Area (l, b) (x - 1, t)
-    right = Area (x + 1, b) (r, t)
+    (i, g')  = randomR ((l + 1) `div` 2, r `div` 2) g
+    (j, g'') = randomR (b `div` 2, (t - 1) `div` 2) g'
 
-splitV :: Int -> Area -> Split Int
-splitV y area = Split (transposeArea bottom) y (transposeArea top)
-  where
-    Split bottom _ top = splitH y (transposeArea area)
+-- | Создать вертикальную стену с заданными координатами.
+-- Координата x указывает положение стены, а координата y — положение прохода в стене.
+mkVerticalWall :: Coords -> Area -> Maze
+mkVerticalWall (i, j) (Area (_, b) (_, t)) = fromCoordsList
+  [ (i, y) | y <- [b..t], y /= j ]
 
-data Split a = Split Area a Area
-  deriving (Functor)
-
-randomSplitH :: RandomGen g => g -> Area -> (Split Int, g)
-randomSplitH g area = (splitH (2 * x) area, g')
-  where
-    (x, g') = randomR ((l + 1) `div` 2, (r - 1) `div` 2) g
-    Area (l, _) (r, _) = area
-
-randomSplitWall :: RandomGen g => g -> Area -> (Split Int, g)
-randomSplitWall g area = (splitV (2 * y + 1) area, g')
-  where
-    (y, g') = randomR (b `div` 2, t `div` 2) g
-    Area (_, b) (_, t) = area
-
-randomWallsH :: RandomGen g => g -> Area -> (Split Maze, g)
-randomWallsH g area = (Split left (mkWall top <> mkWall bottom) right, g'')
-  where
-    Area (_, b) (_, t) = area
-    wallsArea = Area (x, b) (x, t)
-    (Split left x right,  g')  = randomSplitH g area
-    (Split top  _ bottom, g'') = randomSplitWall g' wallsArea
-
-thinArea :: Area -> Bool
-thinArea (Area (l, b) (r, t)) = r <= l + 1 || t <= b + 1
-
+-- | Сгенерировать случайный лабиринт в заданной прямоугольной области.
+-- Генерация происходит при помощи рекурсивного разделения области
+-- стенами с одним проходом.
 genMaze :: RandomGen g => Area -> g -> Maze
 genMaze area g
-  | thinArea area = mempty
-  | otherwise     = leftMaze <> walls <> rightMaze
+  | thinArea area = mempty { spaceArea = Just area }
+  | otherwise     = wall <> leftMaze <> rightMaze
   where
-    (Split left walls right, g') = randomWallsH g area
+    ((i, j), g')  = randomWallCoords area g
+    wall          = mkVerticalWall (i, j) area
+    (left, right) = splitH i area
+
+    -- для левой и правой подобластей мы вызываем genMaze рекурсивно,
+    -- транспонируя обе подобласти, а затем транспонируя обратно
+    -- полученные подлабиринты
     (gl, gr) = split g'
     leftMaze  = transposeMaze (genMaze (transposeArea left)  gl)
     rightMaze = transposeMaze (genMaze (transposeArea right) gr)
