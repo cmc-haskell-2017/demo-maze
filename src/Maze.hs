@@ -7,8 +7,8 @@ import System.Random
 import Maze.Space
 
 -- | Запустить демонстрацию с лабиринтом.
-demo :: IO ()
-demo = play display bgColor fps initGame drawGame handleGame updateGame
+demo :: Maze -> IO ()
+demo maze = play display bgColor fps (initGame maze) drawGame handleGame updateGame
   where
     display = InWindow "Лабиринты" (1000, 1000) (200, 200)
     bgColor = voidColor -- цвет фона
@@ -21,15 +21,11 @@ data Game = Game
   }
 
 -- | Начальное состояние игры.
-initGame :: Game
-initGame = Game
-  { gameMaze   = withBorder (genMaze gameArea (mkStdGen 1))
-  , gamePlayer = (-15, -15)
+initGame :: Maze -> Game
+initGame maze = Game
+  { gameMaze   = withBorder maze
+  , gamePlayer = (1, 1)
   }
-
--- | Область лабиринта.
-gameArea :: Area
-gameArea = Area (-15, -15) (15, 15)
 
 -- | Отрисовка игры.
 drawGame :: Game -> Picture
@@ -43,7 +39,7 @@ drawGame game = scale 20 20 (pictures
 playerArea :: Coords -> Area
 playerArea (i, j) = Area (i - fadeRadius, j - fadeRadius) (i + fadeRadius, j + fadeRadius)
 
--- | Радиус видимости, определяющий поле зрения игрока.
+-- | Радиус видимости, определяющий поле зрения игрока (в ячейках).
 fadeRadius :: Num a => a
 fadeRadius = 8
 
@@ -161,4 +157,3 @@ genMaze area g
     (gl, gr) = split g'
     leftMaze  = transposeMaze (genMaze (transposeArea left)  gl)
     rightMaze = transposeMaze (genMaze (transposeArea right) gr)
-

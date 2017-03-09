@@ -1,6 +1,11 @@
 module Main where
 
+import System.Random
+
 import Maze
+import Maze.Space
 
 main :: IO ()
-main = demo
+main = do
+  g <- newStdGen
+  demo (genMaze (Area (-15, -15) (15, 15)) g)
