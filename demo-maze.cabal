@@ -1,8 +1,8 @@
-name:                demo-gen-maze
+name:                demo-maze
 version:             0.1
 synopsis:            Рекурсивная генерация лабиринтов.
 -- description:
-homepage:            https://github.com/cmc-haskell-2017/demo-gen-maze#readme
+homepage:            https://github.com/cmc-haskell-2017/demo-maze#readme
 license:             MIT
 license-file:        LICENSE
 author:              Nickolay Kudasov
@@ -23,15 +23,15 @@ library
                      , random
   default-language:    Haskell2010
 
-executable demo-gen-maze
+executable demo-maze
   hs-source-dirs:      app
   main-is:             Main.hs
   ghc-options:         -Wall -threaded -rtsopts -with-rtsopts=-N
   build-depends:       base
-                     , demo-gen-maze
+                     , demo-maze
                      , random
   default-language:    Haskell2010
 
 source-repository head
   type:     git
-  location: https://github.com/cmc-haskell-2017/demo-gen-maze
+  location: https://github.com/cmc-haskell-2017/demo-maze
