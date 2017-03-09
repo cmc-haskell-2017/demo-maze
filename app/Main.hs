@@ -8,4 +8,4 @@ import Maze.Space
 main :: IO ()
 main = do
   g <- newStdGen
-  demo (genMaze (Area (-15, -15) (15, 15)) g)
+  demo (genMaze (Area (-16, -16) (16, 16)) g)

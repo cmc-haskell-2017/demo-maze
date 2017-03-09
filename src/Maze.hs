@@ -24,7 +24,7 @@ data Game = Game
 initGame :: Maze -> Game
 initGame maze = Game
   { gameMaze   = withBorder maze
-  , gamePlayer = (1, 1)
+  , gamePlayer = (0, 0)
   }
 
 -- | Отрисовка игры.
@@ -126,12 +126,12 @@ transposeMaze = fmap swap . transposeSpace
 -- | Сгенерировать случайные координаты для вертикальной стены.
 -- Координата x указывает положение стены, а координата y — положение прохода в стене.
 -- Чтобы стены не склеивались и лабиринт оставался связным,
--- стены всегда создаются на чётных позициях, а проходы — на нечётных.
+-- стены всегда создаются на нечётных позициях, а проходы — на чётных.
 randomWallCoords :: RandomGen g => Area -> g -> (Coords, g)
-randomWallCoords (Area (l, b) (r, t)) g = ((2*i, 2*j+1), g'')
+randomWallCoords (Area (l, b) (r, t)) g = ((2 * i + 1, 2 * j), g'')
   where
-    (i, g')  = randomR ((l + 1) `div` 2, r `div` 2) g
-    (j, g'') = randomR (b `div` 2, (t - 1) `div` 2) g'
+    (i, g')  = randomR (l `div` 2, (r - 1) `div` 2) g
+    (j, g'') = randomR ((b + 1) `div` 2, t `div` 2) g'
 
 -- | Создать вертикальную стену с заданными координатами.
 -- Координата x указывает положение стены, а координата y — положение прохода в стене.
