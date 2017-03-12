@@ -10,9 +10,13 @@ import Maze.Space
 demo :: Maze -> IO ()
 demo maze = play display bgColor fps (initGame maze) drawGame handleGame updateGame
   where
-    display = InWindow "Лабиринты" (1000, 1000) (200, 200)
+    display = InWindow "Лабиринты" (screenWidth, screenHeight) (200, 200)
     bgColor = voidColor -- цвет фона
     fps     = 60        -- кол-во кадров в секунду
+
+-- ==============================================
+-- Модель
+-- ==============================================
 
 -- | Состояние игры.
 data Game = Game
@@ -20,54 +24,21 @@ data Game = Game
   , gamePlayer :: Coords  -- ^ Положение игрока.
   }
 
+-- | Ячейка стены лабиринта.
+type Brick = Coords
+
+-- | Лабиринт — это пространство с ячейками стен.
+type Maze = Space Brick
+
+-- | Стена — это тоже пространство с ячейками стен.
+type Wall = Space Brick
+
 -- | Начальное состояние игры.
 initGame :: Maze -> Game
 initGame maze = Game
   { gameMaze   = withBorder maze
   , gamePlayer = (0, 0)
   }
-
--- | Отрисовка игры.
-drawGame :: Game -> Picture
-drawGame game = scale 20 20 (pictures
-  [ foldMap drawBrick (crop (playerArea (gamePlayer game)) (gameMaze game))
-  , fadeAt (gamePlayer game)
-  , drawPlayer (gamePlayer game)
-  ])
-
--- | Минимальная прямоугольная область, вмещающая поле зрения игрока.
-playerArea :: Coords -> Area
-playerArea (i, j) = Area (i - fadeRadius, j - fadeRadius) (i + fadeRadius, j + fadeRadius)
-
--- | Радиус видимости, определяющий поле зрения игрока (в ячейках).
-fadeRadius :: Num a => a
-fadeRadius = 8
-
--- | Отобразить плавное затемнение вокруг игрока.
-fadeAt :: Coords -> Picture
-fadeAt (i, j) = translate (fromIntegral i) (fromIntegral j) (scale fadeRadius fadeRadius fade)
-
--- | Плавное затемнение с радиусом 1.
-fade :: Picture
-fade = foldMap fadeRing [0..n] <> outerVoid
-  where
-    n = 100
-    fadeRing r = color (withAlpha ((r / n)^5) voidColor)
-      (thickCircle (r / n) (10 / n))
-    outerVoid = color voidColor (thickCircle 1.5 1)
-
--- | Цвет пустоты (невидимой для игрока зоны).
-voidColor :: Color
-voidColor = black
-
--- | Отобразить игрока.
-drawPlayer :: Coords -> Picture
-drawPlayer (i, j) = translate (fromIntegral i) (fromIntegral j) (color magenta (thickCircle 0.2 0.4))
-
--- | Отобразить ячейку стены лабиринта.
-drawBrick :: Brick -> Picture
-drawBrick (i, j) = translate (fromIntegral i) (fromIntegral j)
-  (color orange (scale 0.45 0.45 (polygon [ (-1, -1), (1, -1), (1, 1), (-1, 1) ])))
 
 -- | Внешняя граница лабиринта.
 borderMaze :: Area -> Maze
@@ -83,6 +54,52 @@ borderMaze area = fromCoordsList ( concat
 -- | Добавить лабиринту внешнюю границу.
 withBorder :: Maze -> Maze
 withBorder maze = maze <> foldMap borderMaze (spaceArea maze)
+
+-- | Минимальная прямоугольная область, вмещающая поле зрения игрока.
+playerArea :: Coords -> Area
+playerArea (i, j) = Area (i - fadeRadius, j - fadeRadius) (i + fadeRadius, j + fadeRadius)
+
+-- ==============================================
+-- Отрисовка
+-- ==============================================
+
+-- | Отрисовка игры.
+drawGame :: Game -> Picture
+drawGame game = scale 20 20 (pictures
+  [ drawMaze (playerArea (gamePlayer game)) (gameMaze game)
+  , fadeAt (gamePlayer game)
+  , drawPlayer (gamePlayer game)
+  ])
+
+-- | Отобразить лабиринт.
+drawMaze :: Area -> Maze -> Picture
+drawMaze visibleArea = foldMap drawBrick . crop visibleArea
+
+-- | Отобразить игрока.
+drawPlayer :: Coords -> Picture
+drawPlayer (i, j) = translate (fromIntegral i) (fromIntegral j) (color magenta (thickCircle 0.2 0.4))
+
+-- | Отобразить ячейку стены лабиринта.
+drawBrick :: Brick -> Picture
+drawBrick (i, j) = translate (fromIntegral i) (fromIntegral j)
+  (color orange (scale 0.45 0.45 (polygon [ (-1, -1), (1, -1), (1, 1), (-1, 1) ])))
+
+-- | Отобразить плавное затемнение вокруг игрока.
+fadeAt :: Coords -> Picture
+fadeAt (i, j) = translate (fromIntegral i) (fromIntegral j) (scale fadeRadius fadeRadius fade)
+
+-- | Плавное затемнение с радиусом 1.
+fade :: Picture
+fade = foldMap fadeRing [0..n] <> outerVoid
+  where
+    n = 100
+    fadeRing r = color (withAlpha ((r / n)^5) voidColor)
+      (thickCircle (r / n) (10 / n))
+    outerVoid = color voidColor (thickCircle 1.5 1)
+
+-- ==============================================
+-- Обработка событий
+-- ==============================================
 
 -- | Обработка событий игры.
 handleGame :: Event -> Game -> Game
@@ -110,14 +127,9 @@ canMove from to maze = True
 updateGame :: Float -> Game -> Game
 updateGame _ = id
 
--- | Ячейка стены лабиринта.
-type Brick = Coords
-
--- | Лабиринт — это пространство с ячейками стен.
-type Maze = Space Brick
-
--- | Стена — это тоже пространство с ячейками стен.
-type Wall = Space Brick
+-- ==============================================
+-- Генерация лабиринта
+-- ==============================================
 
 -- | Транспонировать лабиринт.
 transposeMaze :: Maze -> Maze
@@ -157,3 +169,24 @@ genMaze area g
     (gl, gr) = split g'
     leftMaze  = transposeMaze (genMaze (transposeArea left)  gl)
     rightMaze = transposeMaze (genMaze (transposeArea right) gr)
+
+-- ==============================================
+-- Константы и параметры
+-- ==============================================
+
+-- | Цвет пустоты (невидимой для игрока зоны).
+voidColor :: Color
+voidColor = black
+
+-- | Радиус видимости, определяющий поле зрения игрока (в ячейках).
+fadeRadius :: Num a => a
+fadeRadius = 8
+
+-- | Ширина экрана.
+screenWidth :: Num a => a
+screenWidth = 1000
+
+-- | Высота экрана.
+screenHeight :: Num a => a
+screenHeight = 1000
+
